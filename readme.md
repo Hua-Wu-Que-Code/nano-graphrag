@@ -5,7 +5,7 @@
       <img alt="Shows the MemoDB logo" src="https://assets.memodb.io/nano-graphrag.png" width="512">
     </picture>
   </a>
-  <p><strong>A simple, easy-to-hack GraphRAG implementation</strong></p>
+  <p><strong>一个简单、易于修改的 GraphRAG 实现</strong></p>
   <p>
     <img src="https://img.shields.io/badge/python->=3.9.11-blue">
     <a href="https://pypi.org/project/nano-graphrag/">
@@ -36,29 +36,29 @@
 
 
 
-😭 [GraphRAG](https://arxiv.org/pdf/2404.16130) is good and powerful, but the official [implementation](https://github.com/microsoft/graphrag/tree/main) is difficult/painful to **read or hack**.
+😭 [GraphRAG](https://arxiv.org/pdf/2404.16130) 很强大，但官方[实现](https://github.com/microsoft/graphrag/tree/main)代码难以**阅读或修改**。
 
-😊 This project provides a **smaller, faster, cleaner GraphRAG**, while remaining the core functionality(see [benchmark](#benchmark) and [issues](#Issues) ).
+😊 本项目提供了一个**更小、更快、更简洁的 GraphRAG**，同时保留核心功能（见[基准测试](#benchmark)和[问题](#Issues)）。
 
-🎁 Excluding `tests` and prompts,  `nano-graphrag` is about **1100 lines of code**.
+🎁 除去 `tests` 和 prompt，`nano-graphrag` 仅约 **1100 行代码**。
 
-👌 Small yet [**portable**](#Components)(faiss, neo4j, ollama...), [**asynchronous**](#Async) and fully typed.
+👌 小巧但[**可移植**](#Components)（faiss、neo4j、ollama...）、[**异步**](#Async)且全类型注解。
 
 
 
-> If you're looking for a multi-user RAG solution for long-term user memory, have a look at this project: [memobase](https://github.com/memodb-io/memobase) :)
+> 如果你在寻找一个多用户、长期记忆的 RAG 方案，可以看看这个项目：[memobase](https://github.com/memodb-io/memobase) :)
 
-## Install
+## 安装
 
-**Install from source** (recommend)
+**推荐源码安装**
 
 ```shell
-# clone this repo first
+# 先克隆本仓库
 cd nano-graphrag
 pip install -e .
 ```
 
-**Install from PyPi**
+**PyPi 安装**
 
 ```shell
 pip install nano-graphrag
@@ -66,29 +66,29 @@ pip install nano-graphrag
 
 
 
-## Quick Start
+## 快速开始
 
 > [!TIP]
 >
-> **Please set OpenAI API key in environment: `export OPENAI_API_KEY="sk-..."`.** 
+> **请在环境变量中设置 OpenAI API key：`export OPENAI_API_KEY="sk-..."`。** 
 
 > [!TIP]
-> If you're using Azure OpenAI API, refer to the [.env.example](./.env.example.azure) to set your azure openai. Then pass `GraphRAG(...,using_azure_openai=True,...)` to enable.
+> 如果你使用 Azure OpenAI API，请参考 [.env.example](./.env.example.azure) 设置，然后通过 `GraphRAG(...,using_azure_openai=True,...)` 启用。
 
 > [!TIP]
-> If you're using Amazon Bedrock API, please ensure your credentials are properly set through commands like `aws configure`. Then enable it by configuring like this: `GraphRAG(...,using_amazon_bedrock=True, best_model_id="us.anthropic.claude-3-sonnet-20240229-v1:0", cheap_model_id="us.anthropic.claude-3-haiku-20240307-v1:0",...)`. Refer to an [example script](./examples/using_amazon_bedrock.py).
+> 如果你使用 Amazon Bedrock API，请确保通过 `aws configure` 等命令正确设置凭证。然后通过如下方式启用：`GraphRAG(...,using_amazon_bedrock=True, best_model_id="us.anthropic.claude-3-sonnet-20240229-v1:0", cheap_model_id="us.anthropic.claude-3-haiku-20240307-v1:0",...)`。可参考[示例脚本](./examples/using_amazon_bedrock.py)。
 
 > [!TIP]
 >
-> If you don't have any key, check out this [example](./examples/no_openai_key_at_all.py) that using `transformers` and `ollama` . If you like to use another LLM or Embedding Model, check [Advances](#Advances).
+> 如果你没有任何 key，可以参考这个[示例](./examples/no_openai_key_at_all.py)，使用 `transformers` 和 `ollama`。如需自定义 LLM 或 Embedding Model，请见[进阶用法](#Advances)。
 
-download a copy of A Christmas Carol by Charles Dickens:
+下载狄更斯的《圣诞颂歌》：
 
 ```shell
 curl https://raw.githubusercontent.com/gusye1234/nano-graphrag/main/tests/mock_data.txt > ./book.txt
 ```
 
-Use the below python snippet:
+使用如下 Python 代码：
 
 ```python
 from nano_graphrag import GraphRAG, QueryParam
@@ -98,25 +98,25 @@ graph_func = GraphRAG(working_dir="./dickens")
 with open("./book.txt") as f:
     graph_func.insert(f.read())
 
-# Perform global graphrag search
+# 全局 graphrag 检索
 print(graph_func.query("What are the top themes in this story?"))
 
-# Perform local graphrag search (I think is better and more scalable one)
+# 局部 graphrag 检索（更好且更易扩展）
 print(graph_func.query("What are the top themes in this story?", param=QueryParam(mode="local")))
 ```
 
-Next time you initialize a `GraphRAG` from the same `working_dir`, it will reload all the contexts automatically.
+下次用同一个 `working_dir` 初始化 `GraphRAG` 时，会自动加载所有上下文。
 
-#### Batch Insert
+#### 批量插入
 
 ```python
 graph_func.insert(["TEXT1", "TEXT2",...])
 ```
 
 <details>
-<summary> Incremental Insert</summary>
+<summary> 增量插入</summary>
 
-`nano-graphrag` supports incremental insert, no duplicated computation or data will be added:
+`nano-graphrag` 支持增量插入，不会重复计算或存储数据：
 
 ```python
 with open("./book.txt") as f:
@@ -126,21 +126,21 @@ with open("./book.txt") as f:
     graph_func.insert(book[half_len:])
 ```
 
-> `nano-graphrag` use md5-hash of the content as the key, so there is no duplicated chunk.
+> `nano-graphrag` 使用内容的 md5-hash 作为 key，因此不会有重复 chunk。
 >
-> However, each time you insert, the communities of graph will be re-computed and the community reports will be re-generated
+> 但每次插入时，图的社区会重新计算，社区报告也会重新生成。
 
 </details>
 
 <details>
-<summary> Naive RAG</summary>
+<summary> 朴素 RAG</summary>
 
-`nano-graphrag` supports naive RAG insert and query as well:
+`nano-graphrag` 也支持朴素 RAG 的插入和查询：
 
 ```python
 graph_func = GraphRAG(working_dir="./dickens", enable_naive_rag=True)
 ...
-# Query
+# 查询
 print(rag.query(
       "What are the top themes in this story?",
       param=QueryParam(mode="naive")
@@ -149,9 +149,9 @@ print(rag.query(
 </details>
 
 
-### Async
+### 异步
 
-For each method `NAME(...)` , there is a corresponding async method `aNAME(...)`
+每个方法 `NAME(...)` 都有对应的异步方法 `aNAME(...)`
 
 ```python
 await graph_func.ainsert(...)
@@ -159,62 +159,61 @@ await graph_func.aquery(...)
 ...
 ```
 
-### Available Parameters
+### 可用参数
 
-`GraphRAG` and `QueryParam` are `dataclass` in Python. Use `help(GraphRAG)` and `help(QueryParam)` to see all available parameters!  Or check out the [Advances](#Advances) section to see some options.
+`GraphRAG` 和 `QueryParam` 都是 Python 的 `dataclass`。用 `help(GraphRAG)` 和 `help(QueryParam)` 查看所有参数！或参考[进阶用法](#Advances)部分。
 
 
 
-## Components
+## 组件
 
-Below are the components you can use:
+可用组件如下：
 
-| Type            |                             What                             |                       Where                       |
+| 类型            |                             说明                             |                       位置                       |
 | :-------------- | :----------------------------------------------------------: | :-----------------------------------------------: |
-| LLM             |                            OpenAI                            |                     Built-in                      |
-|                 |                        Amazon Bedrock                        |                     Built-in                      |
-|                 |                           DeepSeek                           |              [examples](./examples)               |
-|                 |                           `ollama`                           |              [examples](./examples)               |
-| Embedding       |                            OpenAI                            |                     Built-in                      |
-|                 |                        Amazon Bedrock                        |                     Built-in                      |
-|                 |                    Sentence-transformers                     |              [examples](./examples)               |
-| Vector DataBase | [`nano-vectordb`](https://github.com/gusye1234/nano-vectordb) |                     Built-in                      |
-|                 |        [`hnswlib`](https://github.com/nmslib/hnswlib)        |         Built-in, [examples](./examples)          |
-|                 |  [`milvus-lite`](https://github.com/milvus-io/milvus-lite)   |              [examples](./examples)               |
-|                 | [faiss](https://github.com/facebookresearch/faiss?tab=readme-ov-file) |              [examples](./examples)               |
-| Graph Storage   | [`networkx`](https://networkx.org/documentation/stable/index.html) |                     Built-in                      |
-|                 |                [`neo4j`](https://neo4j.com/)                 | Built-in([doc](./docs/use_neo4j_for_graphrag.md)) |
-| Visualization   |                           graphml                            |              [examples](./examples)               |
-| Chunking        |                        by token size                         |                     Built-in                      |
-|                 |                       by text splitter                       |                     Built-in                      |
+| LLM             |                            OpenAI                            |                     内置实现                      |
+|                 |                        Amazon Bedrock                        |                     内置实现                      |
+|                 |                           DeepSeek                           |              [示例](./examples)                   |
+|                 |                           `ollama`                           |              [示例](./examples)                   |
+| Embedding       |                            OpenAI                            |                     内置实现                      |
+|                 |                        Amazon Bedrock                        |                     内置实现                      |
+|                 |                    Sentence-transformers                     |              [示例](./examples)                   |
+| 向量数据库      | [`nano-vectordb`](https://github.com/gusye1234/nano-vectordb) |                     内置实现                      |
+|                 |        [`hnswlib`](https://github.com/nmslib/hnswlib)        |         内置实现, [示例](./examples)              |
+|                 |  [`milvus-lite`](https://github.com/milvus-io/milvus-lite)   |              [示例](./examples)                   |
+|                 | [faiss](https://github.com/facebookresearch/faiss?tab=readme-ov-file) |              [示例](./examples)                   |
+| 图存储          | [`networkx`](https://networkx.org/documentation/stable/index.html) |                     内置实现                      |
+|                 |                [`neo4j`](https://neo4j.com/)                 | 内置实现([文档](./docs/use_neo4j_for_graphrag.md))|
+| 可视化          |                           graphml                            |              [示例](./examples)                   |
+| 分块            |                        按 token 大小                         |                     内置实现                      |
+|                 |                       按文本分割器                           |                     内置实现                      |
 
-- `Built-in` means we have that implementation inside `nano-graphrag`. `examples` means we have that implementation inside an tutorial under [examples](./examples) folder.
+- `内置实现` 表示我们在 `nano-graphrag` 内部实现了该组件。`示例` 表示我们在 [examples](./examples) 文件夹下有相关教程。
 
-- Check [examples/benchmarks](./examples/benchmarks) to see few comparisons between components.
-- **Always welcome to contribute more components.**
+- 查看 [examples/benchmarks](./examples/benchmarks) 了解组件间的对比。
+- **欢迎贡献更多组件。**
 
-## Advances
+## 进阶用法
 
 
 
 <details>
-<summary>Some setup options</summary>
+<summary>一些设置选项</summary>
 
-- `GraphRAG(...,always_create_working_dir=False,...)` will skip the dir-creating step. Use it if you switch all your components to non-file storages.
+- `GraphRAG(...,always_create_working_dir=False,...)` 可跳过目录创建步骤。如果你把所有组件都换成非文件存储可用此选项。
 
 </details>
 
 
 
 <details>
-<summary>Only query the related context</summary>
+<summary>只查询相关上下文</summary>
 
-`graph_func.query` return the final answer without streaming. 
+`graph_func.query` 默认返回最终答案（非流式）。
 
-If you like to interagte `nano-graphrag` in your project, you can use `param=QueryParam(..., only_need_context=True,...)`, which will only return the retrieved context from graph, something like:
-
+如需集成到你的项目，可用 `param=QueryParam(..., only_need_context=True,...)`，只返回检索到的上下文，例如：
 ````
-# Local mode
+# 局部模式
 -----Reports-----
 ```csv
 id,	content
@@ -223,39 +222,39 @@ id,	content
 ```
 ...
 
-# Global mode
+# 全局模式
 ----Analyst 3----
 Importance Score: 100
 Donald J. Trump: Frequently discussed in relation to his political activities...
 ...
 ````
 
-You can integrate that context into your customized prompt.
+你可以将这些上下文集成到自定义的提示中。
 
 </details>
 
 <details>
-<summary>Prompt</summary>
+<summary>提示</summary>
 
-`nano-graphrag` use prompts from `nano_graphrag.prompt.PROMPTS` dict object. You can play with it and replace any prompt inside.
+`nano-graphrag` 的提示语来自 `nano_graphrag.prompt.PROMPTS` 字典对象。你可以修改或替换其中任何提示。
 
-Some important prompts:
+一些重要的提示：
 
-- `PROMPTS["entity_extraction"]` is used to extract the entities and relations from a text chunk.
-- `PROMPTS["community_report"]` is used to organize and summary the graph cluster's description.
-- `PROMPTS["local_rag_response"]` is the system prompt template of the local search generation.
-- `PROMPTS["global_reduce_rag_response"]` is the system prompt template of the global search generation.
-- `PROMPTS["fail_response"]` is the fallback response when nothing is related to the user query.
+- `PROMPTS["entity_extraction"]` 用于从文本块中提取实体和关系。
+- `PROMPTS["community_report"]` 用于组织和总结图聚类的描述。
+- `PROMPTS["local_rag_response"]` 是局部检索生成的系统提示模板。
+- `PROMPTS["global_reduce_rag_response"]` 是全局检索生成的系统提示模板。
+- `PROMPTS["fail_response"]` 是当与用户查询无关时的备用响应。
 
 </details>
 
 <details>
-<summary>Customize Chunking</summary>
+<summary>自定义分块</summary>
 
 
-`nano-graphrag` allow you to customize your own chunking method, check out the [example](./examples/using_custom_chunking_method.py).
+`nano-graphrag` 允许你自定义分块方法，查看[示例](./examples/using_custom_chunking_method.py)。
 
-Switch to the built-in text splitter chunking method:
+切换到内置的文本分割器分块方法：
 
 ```python
 from nano_graphrag._op import chunking_by_seperators
@@ -268,62 +267,62 @@ GraphRAG(...,chunk_func=chunking_by_seperators,...)
 
 
 <details>
-<summary>LLM Function</summary>
+<summary>LLM 函数</summary>
 
-In `nano-graphrag`, we requires two types of LLM, a great one and a cheap one. The former is used to plan and respond, the latter is used to summary. By default, the great one is `gpt-4o` and the cheap one is `gpt-4o-mini`
+在 `nano-graphrag` 中，我们需要两种类型的 LLM，一种用于计划和响应，另一种用于摘要。默认情况下，前者是 `gpt-4o`，后者是 `gpt-4o-mini`。
 
-You can implement your own LLM function (refer to `_llm.gpt_4o_complete`):
+你可以实现自己的 LLM 函数（参考 `_llm.gpt_4o_complete`）：
 
 ```python
 async def my_llm_complete(
     prompt, system_prompt=None, history_messages=[], **kwargs
 ) -> str:
-  # pop cache KV database if any
+  # 弹出缓存 KV 数据库
   hashing_kv: BaseKVStorage = kwargs.pop("hashing_kv", None)
-  # the rest kwargs are for calling LLM, for example, `max_tokens=xxx`
+  # 其余的 kwargs 用于调用 LLM，例如 `max_tokens=xxx`
 	...
-  # YOUR LLM calling
+  # 调用你的 LLM
   response = await call_your_LLM(messages, **kwargs)
   return response
 ```
 
-Replace the default one with:
+用以下代码替换默认设置：
 
 ```python
-# Adjust the max token size or the max async requests if needed
+# 如有需要，调整最大令牌大小或最大异步请求数
 GraphRAG(best_model_func=my_llm_complete, best_model_max_token_size=..., best_model_max_async=...)
 GraphRAG(cheap_model_func=my_llm_complete, cheap_model_max_token_size=..., cheap_model_max_async=...)
 ```
 
-You can refer to this [example](./examples/using_deepseek_as_llm.py) that use [`deepseek-chat`](https://platform.deepseek.com/api-docs/) as the LLM model
+你可以参考这个[示例](./examples/using_deepseek_as_llm.py)，使用 [`deepseek-chat`](https://platform.deepseek.com/api-docs/) 作为 LLM 模型
 
-You can refer to this [example](./examples/using_ollama_as_llm.py) that use [`ollama`](https://github.com/ollama/ollama) as the LLM model
+你可以参考这个[示例](./examples/using_ollama_as_llm.py)，使用 [`ollama`](https://github.com/ollama/ollama) 作为 LLM 模型
 
-#### Json Output
+#### Json 输出
 
-`nano-graphrag` will use `best_model_func` to output JSON with params `"response_format": {"type": "json_object"}`. However there are some open-source model maybe produce unstable JSON. 
+`nano-graphrag` 将使用 `best_model_func` 输出 JSON，参数为 `"response_format": {"type": "json_object"}`。但某些开源模型可能会生成不稳定的 JSON。 
 
-`nano-graphrag` introduces a post-process interface for you to convert the response to JSON. This func's signature is below:
+`nano-graphrag` 引入了一个后处理接口，用于将响应转换为 JSON。该函数的签名如下：
 
 ```python
 def YOUR_STRING_TO_JSON_FUNC(response: str) -> dict:
-  "Convert the string response to JSON"
+  "将字符串响应转换为 JSON"
   ...
 ```
 
-And pass your own func by `GraphRAG(...convert_response_to_json_func=YOUR_STRING_TO_JSON_FUNC,...)`.
+通过 `GraphRAG(...convert_response_to_json_func=YOUR_STRING_TO_JSON_FUNC,...)` 传入你自己的函数。
 
-For example, you can refer to [json_repair](https://github.com/mangiucugna/json_repair) to repair the JSON string returned by LLM. 
+例如，你可以参考 [json_repair](https://github.com/mangiucugna/json_repair) 修复 LLM 返回的 JSON 字符串。 
 </details>
 
 
 
 <details>
-<summary>Embedding Function</summary>
+<summary>Embedding 函数</summary>
 
-You can replace the default embedding functions with any `_utils.EmbedddingFunc` instance.
+你可以用任何 `_utils.EmbedddingFunc` 实例替换默认的嵌入函数。
 
-For example, the default one is using OpenAI embedding API:
+例如，默认使用 OpenAI 嵌入 API：
 
 ```python
 @wrap_embedding_func_with_attrs(embedding_dim=1536, max_token_size=8192)
@@ -335,84 +334,79 @@ async def openai_embedding(texts: list[str]) -> np.ndarray:
     return np.array([dp.embedding for dp in response.data])
 ```
 
-Replace default embedding function with:
+用以下代码替换默认嵌入函数：
 
 ```python
 GraphRAG(embedding_func=your_embed_func, embedding_batch_num=..., embedding_func_max_async=...)
 ```
 
-You can refer to an [example](./examples/using_local_embedding_model.py) that use `sentence-transformer` to locally compute embeddings.
+你可以参考这个[示例](./examples/using_local_embedding_model.py)，使用 `sentence-transformer` 本地计算嵌入。
 </details>
 
 
 <details>
-<summary>Storage Component</summary>
+<summary>存储组件</summary>
 
-You can replace all storage-related components to your own implementation, `nano-graphrag` mainly uses three kinds of storage:
+你可以用自己的实现替换所有与存储相关的组件，`nano-graphrag` 主要使用三种存储：
 
-**`base.BaseKVStorage` for storing key-json pairs of data** 
+**`base.BaseKVStorage` 存储键值对数据** 
 
-- By default we use disk file storage as the backend. 
+- 默认使用磁盘文件存储作为后端。 
 - `GraphRAG(.., key_string_value_json_storage_cls=YOURS,...)`
 
-**`base.BaseVectorStorage` for indexing embeddings**
+**`base.BaseVectorStorage` 索引嵌入**
 
-- By default we use [`nano-vectordb`](https://github.com/gusye1234/nano-vectordb) as the backend.
-- We have a built-in [`hnswlib`](https://github.com/nmslib/hnswlib) storage also, check out this [example](./examples/using_hnsw_as_vectorDB.py).
-- Check out this [example](./examples/using_milvus_as_vectorDB.py) that implements [`milvus-lite`](https://github.com/milvus-io/milvus-lite) as the backend (not available in Windows).
+- 默认使用 [`nano-vectordb`](https://github.com/gusye1234/nano-vectordb) 作为后端。
+- 我们还内置了 [`hnswlib`](https://github.com/nmslib/hnswlib) 存储，查看这个[示例](./examples/using_hnsw_as_vectorDB.py)。
+- 查看这个[示例](./examples/using_milvus_as_vectorDB.py)，实现 [`milvus-lite`](https://github.com/milvus-io/milvus-lite) 作为后端（在 Windows 上不可用）。
 - `GraphRAG(.., vector_db_storage_cls=YOURS,...)`
 
-**`base.BaseGraphStorage` for storing knowledge graph**
+**`base.BaseGraphStorage` 存储知识图谱**
 
-- By default we use [`networkx`](https://github.com/networkx/networkx) as the backend.
-- We have a built-in `Neo4jStorage` for graph, check out this [tutorial](./docs/use_neo4j_for_graphrag.md).
+- 默认使用 [`networkx`](https://github.com/networkx/networkx) 作为后端。
+- 我们为图内置了 `Neo4jStorage`，查看这个[教程](./docs/use_neo4j_for_graphrag.md)。
 - `GraphRAG(.., graph_storage_cls=YOURS,...)`
 
-You can refer to `nano_graphrag.base` to see detailed interfaces for each components.
+你可以参考 `nano_graphrag.base` 查看各组件的详细接口。
 </details>
 
 
 
-## FQA
+## 常见问题
 
-Check [FQA](./docs/FAQ.md).
+查看 [FQA](./docs/FAQ.md)。
 
+## 路线图
 
+见 [ROADMAP.md](./docs/ROADMAP.md)。
 
-## Roadmap
+## 贡献
 
-See [ROADMAP.md](./docs/ROADMAP.md)
-
-
-
-## Contribute
-
-`nano-graphrag` is open to any kind of contribution. Read [this](./docs/CONTRIBUTING.md) before you contribute.
+`nano-graphrag` 欢迎任何形式的贡献。请在贡献前阅读[这篇文档](./docs/CONTRIBUTING.md)。
 
 
 
+## 基准测试
 
-## Benchmark
-
-- [benchmark for English](./docs/benchmark-en.md)
-- [benchmark for Chinese](./docs/benchmark-zh.md)
-- [An evaluation](./examples/benchmarks/eval_naive_graphrag_on_multi_hop.ipynb) notebook on a [multi-hop RAG task](https://github.com/yixuantt/MultiHop-RAG)
-
-
-
-## Projects that used `nano-graphrag`
-
-- [Medical Graph RAG](https://github.com/MedicineToken/Medical-Graph-RAG): Graph RAG for the Medical Data
-- [LightRAG](https://github.com/HKUDS/LightRAG): Simple and Fast Retrieval-Augmented Generation
-- [fast-graphrag](https://github.com/circlemind-ai/fast-graphrag): RAG that intelligently adapts to your use case, data, and queries
-- [HiRAG](https://github.com/hhy-huang/HiRAG): Retrieval-Augmented Generation with Hierarchical Knowledge
-
-> Welcome to pull requests if your project uses `nano-graphrag`, it will help others to trust this repo❤️
+- [英文基准测试](./docs/benchmark-en.md)
+- [中文基准测试](./docs/benchmark-zh.md)
+- [多跳 RAG 任务](https://github.com/yixuantt/MultiHop-RAG) 的[评估](./examples/benchmarks/eval_naive_graphrag_on_multi_hop.ipynb)笔记本
 
 
 
-## Issues
+## 使用了 `nano-graphrag` 的项目
 
-- `nano-graphrag` didn't implement the `covariates` feature of `GraphRAG`
-- `nano-graphrag` implements the global search different from the original. The original use a map-reduce-like style to fill all the communities into context, while `nano-graphrag` only use the top-K important and central communites (use `QueryParam.global_max_consider_community` to control, default to 512 communities).
+- [Medical Graph RAG](https://github.com/MedicineToken/Medical-Graph-RAG): 医疗数据的图 RAG
+- [LightRAG](https://github.com/HKUDS/LightRAG): 简单快速的增强生成
+- [fast-graphrag](https://github.com/circlemind-ai/fast-graphrag): 智能适应你的用例、数据和查询的 RAG
+- [HiRAG](https://github.com/hhy-huang/HiRAG): 基于层次知识的增强生成
+
+> 如果你的项目使用了 `nano-graphrag`，欢迎提交 PR，帮助更多人信任这个仓库❤️
+
+
+
+## 问题
+
+- `nano-graphrag` 没有实现 `GraphRAG` 的 `covariates` 特性。
+- `nano-graphrag` 的全局检索实现与原版不同。原版采用类似 map-reduce 的方式将所有社区填充到上下文中，而 `nano-graphrag` 仅使用前 K 个重要且中心的社区（使用 `QueryParam.global_max_consider_community` 控制，默认 512 个社区）。
 
