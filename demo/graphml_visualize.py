@@ -265,7 +265,7 @@ def start_server(port):
 def visualize_graphml(graphml_file, html_path, port=8000):
     json_data = graphml_to_json(graphml_file)  # 读取 graphml 并转为 json
     html_dir = os.path.dirname(html_path)
-    if not os.path.exists(html_dir):
+    if html_dir and not os.path.exists(html_dir):  # 只在目录非空时创建
         os.makedirs(html_dir)
     json_path = os.path.join(html_dir, 'graph_json.js')
     create_json(json_data, json_path)          # 写入 json 文件
@@ -288,6 +288,6 @@ def visualize_graphml(graphml_file, html_path, port=8000):
 
 # 用法示例
 if __name__ == "__main__":
-    graphml_file = r"nano_graphrag_cache_azure_openai_TEST/graph_chunk_entity_relation.graphml"  # 替换为你的 GraphML 路径
+    graphml_file = r"/Users/huawuque/Desktop/RAG实验/nano-graphrag/demo/dickens/graph_chunk_entity_relation.graphml"  # 替换为你的 GraphML 路径
     html_path = "graph_visualization.html"
     visualize_graphml(graphml_file, html_path, 11236)

@@ -265,12 +265,25 @@ Relationships:
   "朱元璋早年为刘德放牛，这段经历对他的成长有重要影响。"
 - "朱元璋" -> "吴老太":
   "朱元璋曾希望托吴老太找一个媳妇，显示了他对家庭的渴望。"
-```
 
-# Self-Refine with DSPy-AI (v2.5.6)
-## Main Takeaways
-- Time difference: 66.24 seconds
-- Execution time with DSPy-AI: 211.04 seconds
-- Execution time without DSPy-AI: 144.80 seconds
-- Entities extracted: 38 (without DSPy-AI) vs 16 (with DSPy-AI)
-- Relationships extracted: 38 (without DSPy-AI) vs 16 (with DSPy-AI)
+<!--
+本文件夹（/Users/huawuque/Desktop/RAG实验/nano-graphrag）通常包含与“图谱增强检索生成（Graph RAG）”相关的实验代码、文档和数据。
+下面是该文件夹可能包含的主要内容说明：
+
+1. examples/benchmarks/
+   - 存放用于性能测试和对比实验的示例脚本（如 dspy_entity.py），用于评估不同方法下的实体和关系抽取效果。
+
+2. docs/
+   - 存放项目相关的文档说明、实验报告和结果分析（如本文件 benchmark-dspy-entity-extraction.md），便于复现实验和查阅结果。
+
+3. 主项目代码（如 nano-graphrag/）
+   - 实现核心功能的源代码，包括实体抽取、关系抽取、RAG流程、模型调用等。
+
+4. 配置文件和依赖说明
+   - 可能包含 requirements.txt、config.yaml 等，用于环境配置和依赖管理。
+
+5. 数据集或输入输出样例
+   - 存放用于实验的数据文件、样例文本或模型输出结果。
+
+本文件夹整体用于支持和复现基于 DSPy-AI 等大模型的知识图谱构建、实体关系抽取及相关检索增强生成实验。
+-->

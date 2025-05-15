@@ -1,88 +1,99 @@
-import asyncio
-import os
-from dataclasses import asdict, dataclass, field
-from datetime import datetime
-from functools import partial
-from typing import Callable, Dict, List, Optional, Type, Union, cast
+import asyncio  # Python 标准库，支持异步编程（如 async/await、事件循环等）
+import os       # Python 标准库，进行文件和目录操作（如创建目录、判断文件是否存在等）
+from dataclasses import asdict, dataclass, field  # Python 标准库，简化数据类的定义和实例转字典
+from datetime import datetime  # Python 标准库，处理日期和时间
+from functools import partial  # Python 标准库，生成带部分参数的函数
+from typing import Callable, Dict, List, Optional, Type, Union, cast  # Python 标准库，类型注解和类型转换
 
-import tiktoken
+import tiktoken  # OpenAI 的分词库，用于按 token 分割文本，支持多种 LLM 模型的分词规则
 
+# 导入 nano-graphrag 内部各类 LLM、Embedding、存储、操作与工具函数
 
+# _llm.py：封装了多种大模型（OpenAI、Azure、Bedrock等）的异步调用接口和 embedding 接口
 from ._llm import (
-    amazon_bedrock_embedding,
-    create_amazon_bedrock_complete_function,
-    gpt_4o_complete,
-    gpt_4o_mini_complete,
-    openai_embedding,
-    azure_gpt_4o_complete,
-    azure_openai_embedding,
-    azure_gpt_4o_mini_complete,
-)
-from ._op import (
-    chunking_by_token_size,
-    extract_entities,
-    generate_community_report,
-    get_chunks,
-    local_query,
-    global_query,
-    naive_query,
-)
-from ._storage import (
-    JsonKVStorage,
-    NanoVectorDBStorage,
-    NetworkXStorage,
-)
-from ._utils import (
-    EmbeddingFunc,
-    compute_mdhash_id,
-    limit_async_func_call,
-    convert_response_to_json,
-    always_get_an_event_loop,
-    logger,
-)
-from .base import (
-    BaseGraphStorage,
-    BaseKVStorage,
-    BaseVectorStorage,
-    StorageNameSpace,
-    QueryParam,
+    amazon_bedrock_embedding,                # Amazon Bedrock 的 embedding 接口
+    create_amazon_bedrock_complete_function, # 动态生成 Bedrock 对话函数的工厂
+    gpt_4o_complete,                         # OpenAI gpt-4o 快捷对话接口
+    gpt_4o_mini_complete,                    # OpenAI gpt-4o-mini 快捷对话接口
+    openai_embedding,                        # OpenAI embedding 接口
+    azure_gpt_4o_complete,                   # Azure OpenAI gpt-4o 快捷对话接口
+    azure_openai_embedding,                  # Azure OpenAI embedding 接口
+    azure_gpt_4o_mini_complete,              # Azure OpenAI gpt-4o-mini 快捷对话接口
 )
 
+# _op.py：核心操作函数，包括分块、实体抽取、社区报告、检索等
+from ._op import (
+    chunking_by_token_size,      # 按 token 数分块的分块函数
+    extract_entities,            # 实体抽取主函数
+    generate_community_report,   # 社区分析与报告生成函数
+    get_chunks,                  # 文本分块主流程
+    local_query,                 # 局部（local）检索主流程
+    global_query,                # 全局（global）检索主流程
+    naive_query,                 # naive（仅向量）检索主流程
+)
+
+# _storage.py：存储后端实现，包括 KV 存储、向量数据库、图数据库
+from ._storage import (
+    JsonKVStorage,           # 基于 JSON 文件的 KV 存储实现
+    NanoVectorDBStorage,     # nano-vectordb 的向量存储实现
+    NetworkXStorage,         # 基于 networkx 的图数据库实现
+)
+
+# _utils.py：工具函数和类型定义
+from ._utils import (
+    EmbeddingFunc,               # 嵌入函数类型定义
+    compute_mdhash_id,           # 计算文本哈希 id 的工具
+    limit_async_func_call,        # 限制异步函数最大并发数的装饰器
+    convert_response_to_json,     # LLM 响应转 json 的工具
+    always_get_an_event_loop,     # 获取或新建 asyncio 事件循环
+    logger,                      # 项目统一日志对象
+)
+
+# base.py：基础类型和接口定义
+from .base import (
+    BaseGraphStorage,        # 图数据库存储基类
+    BaseKVStorage,           # KV 存储基类
+    BaseVectorStorage,       # 向量存储基类
+    StorageNameSpace,        # 存储命名空间接口
+    QueryParam,              # 检索参数数据类
+)
 
 @dataclass
+# @dataclass是Python 3.7+ 标准库 dataclasses 提供的一个装饰器，用于简化数据类的定义。
+# 自动为类生成常用的魔法方法，如 __init__()、__repr__()、__eq__() 等。
+# 让你只需声明属性，Python 会自动帮你实现构造函数和属性赋值。
 class GraphRAG:
+    """
+    GraphRAG 主类，负责管理文本插入、分块、实体抽取、知识图谱构建、向量存储、LLM 调用等全流程。
+    支持多种后端、异步处理、缓存、增量插入、全局/局部/naive 检索等。
+    """
+
+    # 工作目录，所有缓存、索引、图谱等文件都存放于此
     working_dir: str = field(
         default_factory=lambda: f"./nano_graphrag_cache_{datetime.now().strftime('%Y-%m-%d-%H:%M:%S')}"
     )
-    # graph mode
+
+    # 是否启用局部（local）图谱检索
     enable_local: bool = True
+    # 是否启用 naive RAG（仅向量检索，不用图谱）
     enable_naive_rag: bool = False
 
-    # text chunking
-    chunk_func: Callable[
-        [
-            list[list[int]],
-            List[str],
-            tiktoken.Encoding,
-            Optional[int],
-            Optional[int],
-        ],
-        List[Dict[str, Union[str, int]]],
-    ] = chunking_by_token_size
-    chunk_token_size: int = 1200
-    chunk_overlap_token_size: int = 100
-    tiktoken_model_name: str = "gpt-4o"
+    # 文本分块相关参数
+    chunk_func: Callable = chunking_by_token_size  # 分块函数
+    chunk_token_size: int = 1200                   # 每块最大 token 数
+    chunk_overlap_token_size: int = 100            # 块之间重叠 token 数
+    tiktoken_model_name: str = "gpt-4o"            # 用于分词的模型名
 
-    # entity extraction
-    entity_extract_max_gleaning: int = 1
-    entity_summary_to_max_tokens: int = 500
+    # 实体抽取相关参数
+    entity_extract_max_gleaning: int = 1           # 实体抽取最大遍历次数
+    entity_summary_to_max_tokens: int = 500        # 实体摘要最大 token 数
 
-    # graph clustering
-    graph_cluster_algorithm: str = "leiden"
-    max_graph_cluster_size: int = 10
-    graph_cluster_seed: int = 0xDEADBEEF
+    # 图聚类相关参数
+    graph_cluster_algorithm: str = "leiden"        # 图聚类算法
+    max_graph_cluster_size: int = 10               # 最大聚类数
+    graph_cluster_seed: int = 0xDEADBEEF           # 聚类随机种子
 
-    # node embedding
+    # 节点嵌入算法参数
     node_embedding_algorithm: str = "node2vec"
     node2vec_params: dict = field(
         default_factory=lambda: {
@@ -96,50 +107,54 @@ class GraphRAG:
         }
     )
 
-    # community reports
+    # 社区报告 LLM 调用参数
     special_community_report_llm_kwargs: dict = field(
         default_factory=lambda: {"response_format": {"type": "json_object"}}
     )
 
-    # text embedding
-    embedding_func: EmbeddingFunc = field(default_factory=lambda: openai_embedding)
-    embedding_batch_num: int = 32
-    embedding_func_max_async: int = 16
-    query_better_than_threshold: float = 0.2
+    # 文本嵌入相关参数
+    embedding_func: EmbeddingFunc = field(default_factory=lambda: openai_embedding)  # 嵌入函数
+    embedding_batch_num: int = 32                  # 嵌入批量大小
+    embedding_func_max_async: int = 16             # 嵌入异步并发数
+    query_better_than_threshold: float = 0.2       # 检索相关性阈值
 
-    # LLM
-    using_azure_openai: bool = False
-    using_amazon_bedrock: bool = False
-    best_model_id: str = "us.anthropic.claude-3-sonnet-20240229-v1:0"
-    cheap_model_id: str = "us.anthropic.claude-3-haiku-20240307-v1:0"
-    best_model_func: callable = gpt_4o_complete
-    best_model_max_token_size: int = 32768
-    best_model_max_async: int = 16
-    cheap_model_func: callable = gpt_4o_mini_complete
-    cheap_model_max_token_size: int = 32768
-    cheap_model_max_async: int = 16
+    # LLM 相关参数
+    using_azure_openai: bool = False               # 是否用 Azure OpenAI
+    using_amazon_bedrock: bool = False             # 是否用 Amazon Bedrock
+    best_model_id: str = "us.anthropic.claude-3-sonnet-20240229-v1:0"  # Bedrock 主力模型
+    cheap_model_id: str = "us.anthropic.claude-3-haiku-20240307-v1:0"  # Bedrock 经济模型
+    best_model_func: callable = gpt_4o_complete    # 主力 LLM 函数
+    best_model_max_token_size: int = 32768         # 主力 LLM 最大 token
+    best_model_max_async: int = 16                 # 主力 LLM 并发数
+    cheap_model_func: callable = gpt_4o_mini_complete  # 经济 LLM 函数
+    cheap_model_max_token_size: int = 32768        # 经济 LLM 最大 token
+    cheap_model_max_async: int = 16                # 经济 LLM 并发数
 
-    # entity extraction
+    # 实体抽取函数
     entity_extraction_func: callable = extract_entities
 
-    # storage
-    key_string_value_json_storage_cls: Type[BaseKVStorage] = JsonKVStorage
-    vector_db_storage_cls: Type[BaseVectorStorage] = NanoVectorDBStorage
-    vector_db_storage_cls_kwargs: dict = field(default_factory=dict)
-    graph_storage_cls: Type[BaseGraphStorage] = NetworkXStorage
-    enable_llm_cache: bool = True
+    # 存储后端相关参数
+    key_string_value_json_storage_cls: Type[BaseKVStorage] = JsonKVStorage  # KV 存储类
+    vector_db_storage_cls: Type[BaseVectorStorage] = NanoVectorDBStorage    # 向量存储类
+    vector_db_storage_cls_kwargs: dict = field(default_factory=dict)        # 向量存储参数
+    graph_storage_cls: Type[BaseGraphStorage] = NetworkXStorage             # 图存储类
+    enable_llm_cache: bool = True                                          # 是否启用 LLM 缓存
 
-    # extension
-    always_create_working_dir: bool = True
-    addon_params: dict = field(default_factory=dict)
-    convert_response_to_json_func: callable = convert_response_to_json
+    # 扩展参数
+    always_create_working_dir: bool = True         # 是否自动创建工作目录
+    addon_params: dict = field(default_factory=dict)  # 额外参数
+    convert_response_to_json_func: callable = convert_response_to_json      # LLM 响应转 json
 
     def __post_init__(self):
+        """
+        初始化 GraphRAG 实例，自动切换 LLM/Embedding 后端，创建存储目录和各类存储实例。
+        """
+        # 打印当前配置（debug）
         _print_config = ",\n  ".join([f"{k} = {v}" for k, v in asdict(self).items()])
         logger.debug(f"GraphRAG init with param:\n\n  {_print_config}\n")
 
+        # 根据配置自动切换 Azure OpenAI
         if self.using_azure_openai:
-            # If there's no OpenAI API key, use Azure OpenAI
             if self.best_model_func == gpt_4o_complete:
                 self.best_model_func = azure_gpt_4o_complete
             if self.cheap_model_func == gpt_4o_mini_complete:
@@ -150,6 +165,7 @@ class GraphRAG:
                 "Switched the default openai funcs to Azure OpenAI if you didn't set any of it"
             )
 
+        # 根据配置自动切换 Amazon Bedrock
         if self.using_amazon_bedrock:
             self.best_model_func = create_amazon_bedrock_complete_function(self.best_model_id)
             self.cheap_model_func = create_amazon_bedrock_complete_function(self.cheap_model_id)
@@ -158,18 +174,18 @@ class GraphRAG:
                 "Switched the default openai funcs to Amazon Bedrock"
             )
 
+        # 自动创建工作目录
         if not os.path.exists(self.working_dir) and self.always_create_working_dir:
             logger.info(f"Creating working directory {self.working_dir}")
             os.makedirs(self.working_dir)
 
+        # 初始化各类存储实例（KV、向量、图谱等）
         self.full_docs = self.key_string_value_json_storage_cls(
             namespace="full_docs", global_config=asdict(self)
         )
-
         self.text_chunks = self.key_string_value_json_storage_cls(
             namespace="text_chunks", global_config=asdict(self)
         )
-
         self.llm_response_cache = (
             self.key_string_value_json_storage_cls(
                 namespace="llm_response_cache", global_config=asdict(self)
@@ -177,7 +193,6 @@ class GraphRAG:
             if self.enable_llm_cache
             else None
         )
-
         self.community_reports = self.key_string_value_json_storage_cls(
             namespace="community_reports", global_config=asdict(self)
         )
@@ -185,9 +200,11 @@ class GraphRAG:
             namespace="chunk_entity_relation", global_config=asdict(self)
         )
 
+        # 包装 embedding_func，限制最大异步并发数
         self.embedding_func = limit_async_func_call(self.embedding_func_max_async)(
             self.embedding_func
         )
+        # 初始化实体向量数据库
         self.entities_vdb = (
             self.vector_db_storage_cls(
                 namespace="entities",
@@ -198,6 +215,7 @@ class GraphRAG:
             if self.enable_local
             else None
         )
+        # 初始化 chunk 向量数据库（仅 naive RAG 用）
         self.chunks_vdb = (
             self.vector_db_storage_cls(
                 namespace="chunks",
@@ -208,6 +226,7 @@ class GraphRAG:
             else None
         )
 
+        # 包装 LLM 函数，自动注入缓存和并发控制
         self.best_model_func = limit_async_func_call(self.best_model_max_async)(
             partial(self.best_model_func, hashing_kv=self.llm_response_cache)
         )
@@ -216,19 +235,29 @@ class GraphRAG:
         )
 
     def insert(self, string_or_strings):
+        """
+        同步接口：插入文本（或文本列表），自动分块、嵌入、实体抽取、图谱构建等。
+        """
         loop = always_get_an_event_loop()
         return loop.run_until_complete(self.ainsert(string_or_strings))
 
     def query(self, query: str, param: QueryParam = QueryParam()):
+        """
+        同步接口：对知识库进行检索与问答，支持全局/局部/naive 模式。
+        """
         loop = always_get_an_event_loop()
         return loop.run_until_complete(self.aquery(query, param))
 
     async def aquery(self, query: str, param: QueryParam = QueryParam()):
+        """
+        异步接口：根据 param.mode 选择不同的检索模式（local/global/naive）。
+        """
         if param.mode == "local" and not self.enable_local:
             raise ValueError("enable_local is False, cannot query in local mode")
         if param.mode == "naive" and not self.enable_naive_rag:
             raise ValueError("enable_naive_rag is False, cannot query in naive mode")
         if param.mode == "local":
+            # 局部检索：先向量召回相关 chunk，再做图谱推理
             response = await local_query(
                 query,
                 self.chunk_entity_relation_graph,
@@ -239,6 +268,7 @@ class GraphRAG:
                 asdict(self),
             )
         elif param.mode == "global":
+            # 全局检索：全量图谱推理
             response = await global_query(
                 query,
                 self.chunk_entity_relation_graph,
@@ -249,6 +279,7 @@ class GraphRAG:
                 asdict(self),
             )
         elif param.mode == "naive":
+            # naive 检索：仅向量召回，不用图谱
             response = await naive_query(
                 query,
                 self.chunks_vdb,
@@ -262,15 +293,21 @@ class GraphRAG:
         return response
 
     async def ainsert(self, string_or_strings):
+        """
+        异步接口：插入文本，自动分块、嵌入、实体抽取、图谱构建等。
+        支持增量插入（已存在的内容自动跳过）。
+        """
         await self._insert_start()
         try:
             if isinstance(string_or_strings, str):
                 string_or_strings = [string_or_strings]
             # ---------- new docs
+            # 计算每个文档的哈希 id，构建新文档字典
             new_docs = {
                 compute_mdhash_id(c.strip(), prefix="doc-"): {"content": c.strip()}
                 for c in string_or_strings
             }
+            # 过滤已存在的文档，只保留新增部分
             _add_doc_keys = await self.full_docs.filter_keys(list(new_docs.keys()))
             new_docs = {k: v for k, v in new_docs.items() if k in _add_doc_keys}
             if not len(new_docs):
@@ -279,14 +316,14 @@ class GraphRAG:
             logger.info(f"[New Docs] inserting {len(new_docs)} docs")
 
             # ---------- chunking
-
+            # 对新文档分块
             inserting_chunks = get_chunks(
                 new_docs=new_docs,
                 chunk_func=self.chunk_func,
                 overlap_token_size=self.chunk_overlap_token_size,
                 max_token_size=self.chunk_token_size,
             )
-
+            # 过滤已存在的 chunk，只保留新增部分
             _add_chunk_keys = await self.text_chunks.filter_keys(
                 list(inserting_chunks.keys())
             )
@@ -301,7 +338,7 @@ class GraphRAG:
                 logger.info("Insert chunks for naive RAG")
                 await self.chunks_vdb.upsert(inserting_chunks)
 
-            # TODO: no incremental update for communities now, so just drop all
+            # TODO: 目前社区分析不支持增量，直接清空重建
             await self.community_reports.drop()
 
             # ---------- extract/summary entity and upsert to graph
@@ -333,6 +370,9 @@ class GraphRAG:
             await self._insert_done()
 
     async def _insert_start(self):
+        """
+        插入流程开始前的回调（如索引锁定等），支持多存储后端扩展。
+        """
         tasks = []
         for storage_inst in [
             self.chunk_entity_relation_graph,
@@ -343,6 +383,9 @@ class GraphRAG:
         await asyncio.gather(*tasks)
 
     async def _insert_done(self):
+        """
+        插入流程结束后的回调（如索引解锁、持久化等），支持多存储后端扩展。
+        """
         tasks = []
         for storage_inst in [
             self.full_docs,
@@ -359,6 +402,9 @@ class GraphRAG:
         await asyncio.gather(*tasks)
 
     async def _query_done(self):
+        """
+        检索流程结束后的回调（如缓存持久化等）。
+        """
         tasks = []
         for storage_inst in [self.llm_response_cache]:
             if storage_inst is None:

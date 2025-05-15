@@ -1,8 +1,11 @@
+# 本模块封装了与多种大语言模型（LLM）服务的异步调用接口，包括OpenAI、Azure OpenAI、Amazon Bedrock等，
+# 并实现了带缓存的对话与嵌入请求，支持自动重试、缓存命中、工厂函数等高级用法。
+
 import json
 import numpy as np
 from typing import Optional, List, Any, Callable
 
-import aioboto3
+import aioboto3  # 异步AWS客户端
 from openai import AsyncOpenAI, AsyncAzureOpenAI, APIConnectionError, RateLimitError
 
 from tenacity import (
@@ -16,32 +19,35 @@ import os
 from ._utils import compute_args_hash, wrap_embedding_func_with_attrs
 from .base import BaseKVStorage
 
+# 全局异步客户端实例，避免重复创建
 global_openai_async_client = None
 global_azure_openai_async_client = None
 global_amazon_bedrock_async_client = None
 
-
+# 获取OpenAI异步客户端单例
 def get_openai_async_client_instance():
     global global_openai_async_client
     if global_openai_async_client is None:
         global_openai_async_client = AsyncOpenAI()
     return global_openai_async_client
 
-
+# 获取Azure OpenAI异步客户端单例
 def get_azure_openai_async_client_instance():
     global global_azure_openai_async_client
     if global_azure_openai_async_client is None:
         global_azure_openai_async_client = AsyncAzureOpenAI()
     return global_azure_openai_async_client
 
-
+# 获取Amazon Bedrock异步客户端单例
 def get_amazon_bedrock_async_client_instance():
     global global_amazon_bedrock_async_client
     if global_amazon_bedrock_async_client is None:
         global_amazon_bedrock_async_client = aioboto3.Session()
     return global_amazon_bedrock_async_client
 
-
+# =========================
+# OpenAI对话接口（带缓存与重试）
+# =========================
 @retry(
     stop=stop_after_attempt(5),
     wait=wait_exponential(multiplier=1, min=4, max=10),
@@ -50,6 +56,10 @@ def get_amazon_bedrock_async_client_instance():
 async def openai_complete_if_cache(
     model, prompt, system_prompt=None, history_messages=[], **kwargs
 ) -> str:
+    """
+    调用OpenAI对话接口，支持缓存与自动重试。
+    若提供hashing_kv参数，则先查缓存，命中则直接返回，否则请求并写入缓存。
+    """
     openai_async_client = get_openai_async_client_instance()
     hashing_kv: BaseKVStorage = kwargs.pop("hashing_kv", None)
     messages = []
@@ -74,7 +84,9 @@ async def openai_complete_if_cache(
         await hashing_kv.index_done_callback()
     return response.choices[0].message.content
 
-
+# =========================
+# Amazon Bedrock对话接口（带缓存与重试）
+# =========================
 @retry(
     stop=stop_after_attempt(5),
     wait=wait_exponential(multiplier=1, min=4, max=10),
@@ -83,6 +95,9 @@ async def openai_complete_if_cache(
 async def amazon_bedrock_complete_if_cache(
     model, prompt, system_prompt=None, history_messages=[], **kwargs
 ) -> str:
+    """
+    调用Amazon Bedrock对话接口，支持缓存与自动重试。
+    """
     amazon_bedrock_async_client = get_amazon_bedrock_async_client_instance()
     hashing_kv: BaseKVStorage = kwargs.pop("hashing_kv", None)
     messages = []
@@ -120,16 +135,12 @@ async def amazon_bedrock_complete_if_cache(
         await hashing_kv.index_done_callback()
     return response["output"]["message"]["content"][0]["text"]
 
-
+# =========================
+# 动态生成Amazon Bedrock对话函数
+# =========================
 def create_amazon_bedrock_complete_function(model_id: str) -> Callable:
     """
-    Factory function to dynamically create completion functions for Amazon Bedrock
-
-    Args:
-        model_id (str): Amazon Bedrock model identifier (e.g., "us.anthropic.claude-3-sonnet-20240229-v1:0")
-
-    Returns:
-        Callable: Generated completion function
+    工厂函数：根据模型ID动态生成Bedrock对话函数
     """
     async def bedrock_complete(
         prompt: str,
@@ -145,15 +156,20 @@ def create_amazon_bedrock_complete_function(model_id: str) -> Callable:
             **kwargs
         )
     
-    # Set function name for easier debugging
+    # 设置函数名，便于调试
     bedrock_complete.__name__ = f"{model_id}_complete"
     
     return bedrock_complete
 
-
+# =========================
+# OpenAI GPT-4o/mini 快捷调用
+# =========================
 async def gpt_4o_complete(
     prompt, system_prompt=None, history_messages=[], **kwargs
 ) -> str:
+    """
+    快捷调用OpenAI gpt-4o模型
+    """
     return await openai_complete_if_cache(
         "gpt-4o",
         prompt,
@@ -162,10 +178,12 @@ async def gpt_4o_complete(
         **kwargs,
     )
 
-
 async def gpt_4o_mini_complete(
     prompt, system_prompt=None, history_messages=[], **kwargs
 ) -> str:
+    """
+    快捷调用OpenAI gpt-4o-mini模型
+    """
     return await openai_complete_if_cache(
         "gpt-4o-mini",
         prompt,
@@ -174,7 +192,9 @@ async def gpt_4o_mini_complete(
         **kwargs,
     )
 
-
+# =========================
+# Amazon Bedrock嵌入接口（带重试，自动属性装饰器）
+# =========================
 @wrap_embedding_func_with_attrs(embedding_dim=1024, max_token_size=8192)
 @retry(
     stop=stop_after_attempt(5),
@@ -182,6 +202,9 @@ async def gpt_4o_mini_complete(
     retry=retry_if_exception_type((RateLimitError, APIConnectionError)),
 )
 async def amazon_bedrock_embedding(texts: list[str]) -> np.ndarray:
+    """
+    调用Amazon Bedrock生成文本嵌入（embedding），返回numpy数组
+    """
     amazon_bedrock_async_client = get_amazon_bedrock_async_client_instance()
 
     async with amazon_bedrock_async_client.client(
@@ -203,7 +226,9 @@ async def amazon_bedrock_embedding(texts: list[str]) -> np.ndarray:
             embeddings.append(json.loads(response_body))
     return np.array([dp["embedding"] for dp in embeddings])
 
-
+# =========================
+# OpenAI嵌入接口（带重试，自动属性装饰器）
+# =========================
 @wrap_embedding_func_with_attrs(embedding_dim=1536, max_token_size=8192)
 @retry(
     stop=stop_after_attempt(5),
@@ -211,13 +236,18 @@ async def amazon_bedrock_embedding(texts: list[str]) -> np.ndarray:
     retry=retry_if_exception_type((RateLimitError, APIConnectionError)),
 )
 async def openai_embedding(texts: list[str]) -> np.ndarray:
+    """
+    调用OpenAI生成文本嵌入（embedding），返回numpy数组
+    """
     openai_async_client = get_openai_async_client_instance()
     response = await openai_async_client.embeddings.create(
         model="text-embedding-3-small", input=texts, encoding_format="float"
     )
     return np.array([dp.embedding for dp in response.data])
 
-
+# =========================
+# Azure OpenAI对话接口（带缓存与重试）
+# =========================
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=4, max=10),
@@ -226,6 +256,9 @@ async def openai_embedding(texts: list[str]) -> np.ndarray:
 async def azure_openai_complete_if_cache(
     deployment_name, prompt, system_prompt=None, history_messages=[], **kwargs
 ) -> str:
+    """
+    调用Azure OpenAI对话接口，支持缓存与自动重试。
+    """
     azure_openai_client = get_azure_openai_async_client_instance()
     hashing_kv: BaseKVStorage = kwargs.pop("hashing_kv", None)
     messages = []
@@ -255,10 +288,15 @@ async def azure_openai_complete_if_cache(
         await hashing_kv.index_done_callback()
     return response.choices[0].message.content
 
-
+# =========================
+# Azure OpenAI GPT-4o/mini 快捷调用
+# =========================
 async def azure_gpt_4o_complete(
     prompt, system_prompt=None, history_messages=[], **kwargs
 ) -> str:
+    """
+    快捷调用Azure OpenAI gpt-4o模型
+    """
     return await azure_openai_complete_if_cache(
         "gpt-4o",
         prompt,
@@ -267,10 +305,12 @@ async def azure_gpt_4o_complete(
         **kwargs,
     )
 
-
 async def azure_gpt_4o_mini_complete(
     prompt, system_prompt=None, history_messages=[], **kwargs
 ) -> str:
+    """
+    快捷调用Azure OpenAI gpt-4o-mini模型
+    """
     return await azure_openai_complete_if_cache(
         "gpt-4o-mini",
         prompt,
@@ -279,7 +319,9 @@ async def azure_gpt_4o_mini_complete(
         **kwargs,
     )
 
-
+# =========================
+# Azure OpenAI嵌入接口（带重试，自动属性装饰器）
+# =========================
 @wrap_embedding_func_with_attrs(embedding_dim=1536, max_token_size=8192)
 @retry(
     stop=stop_after_attempt(3),
@@ -287,6 +329,9 @@ async def azure_gpt_4o_mini_complete(
     retry=retry_if_exception_type((RateLimitError, APIConnectionError)),
 )
 async def azure_openai_embedding(texts: list[str]) -> np.ndarray:
+    """
+    调用Azure OpenAI生成文本嵌入（embedding），返回numpy数组
+    """
     azure_openai_client = get_azure_openai_async_client_instance()
     response = await azure_openai_client.embeddings.create(
         model="text-embedding-3-small", input=texts, encoding_format="float"

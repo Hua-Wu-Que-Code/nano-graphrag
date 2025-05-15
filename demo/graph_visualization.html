@@ -1,20 +1,4 @@
-import networkx as nx  # 用于读取和处理 graphml 图结构
-import json            # 用于处理 JSON 数据
-import os              # 用于文件和路径操作
-import webbrowser      # 用于自动打开浏览器
-import http.server     # 用于启动本地 HTTP 服务
-import socketserver    # 用于创建 TCP 服务器
-import threading       # 用于多线程（后台启动服务器）
 
-# 将 GraphML 文件读取为 networkx 图对象，并转换为 D3.js 可用的 JSON 格式
-def graphml_to_json(graphml_file):
-    G = nx.read_graphml(graphml_file)      # 读取 graphml 文件为 networkx 图
-    data = nx.node_link_data(G)            # 转换为 node-link 格式（适合 D3.js）
-    return json.dumps(data)                # 序列化为 JSON 字符串
-
-# 生成 HTML 文件，内嵌 D3.js 脚本用于可视化
-def create_html(html_path):
-    html_content = '''
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -242,52 +226,4 @@ def create_html(html_path):
     </script>
 </body>
 </html>
-    '''
-    # 写入 HTML 文件
-    with open(html_path, 'w', encoding='utf-8') as f:
-        f.write(html_content)
-
-# 生成 graph_json.js 文件，内容为 var graphJson = {...}
-def create_json(json_data, json_path):
-    # 处理字符串，避免转义问题
-    json_data = "var graphJson = " + json_data.replace('\\"', '').replace("'", "\\'").replace("\n", "")
-    with open(json_path, 'w', encoding='utf-8') as f:
-        f.write(json_data)
-
-# 启动本地 HTTP 服务器，便于浏览器访问 HTML 文件
-def start_server(port):
-    handler = http.server.SimpleHTTPRequestHandler
-    with socketserver.TCPServer(("", port), handler) as httpd:
-        print(f"Server started at http://localhost:{port}")
-        httpd.serve_forever()
-
-# 主流程：生成 json、html，启动服务器并自动打开浏览器
-def visualize_graphml(graphml_file, html_path, port=8000):
-    json_data = graphml_to_json(graphml_file)  # 读取 graphml 并转为 json
-    html_dir = os.path.dirname(html_path)
-    if not os.path.exists(html_dir):
-        os.makedirs(html_dir)
-    json_path = os.path.join(html_dir, 'graph_json.js')
-    create_json(json_data, json_path)          # 写入 json 文件
-    create_html(html_path)                     # 写入 html 文件
-    # 启动 HTTP 服务器（后台线程）
-    server_thread = threading.Thread(target=start_server, args=(port,))
-    server_thread.daemon = True
-    server_thread.start()
     
-    # 自动打开浏览器
-    webbrowser.open(f'http://localhost:{port}/{html_path}')
-    
-    print("Visualization is ready. Press Ctrl+C to exit.")
-    try:
-        # 主线程保持运行，直到 Ctrl+C
-        while True:
-            pass
-    except KeyboardInterrupt:
-        print("Shutting down...")
-
-# 用法示例
-if __name__ == "__main__":
-    graphml_file = r"nano_graphrag_cache_azure_openai_TEST/graph_chunk_entity_relation.graphml"  # 替换为你的 GraphML 路径
-    html_path = "graph_visualization.html"
-    visualize_graphml(graphml_file, html_path, 11236)
