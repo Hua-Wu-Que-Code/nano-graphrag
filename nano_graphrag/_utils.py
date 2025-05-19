@@ -19,13 +19,15 @@ ENCODER = None
 
 def always_get_an_event_loop() -> asyncio.AbstractEventLoop:
     try:
-        # If there is already an event loop, use it.
+        # 如果当前线程已经有事件循环（如主线程或已初始化的异步环境），则直接获取并返回
         loop = asyncio.get_event_loop()
     except RuntimeError:
-        # If in a sub-thread, create a new event loop.
+        # 如果当前线程没有事件循环（如在子线程中），则新建一个事件循环
         logger.info("Creating a new event loop in a sub-thread.")
         loop = asyncio.new_event_loop()
+        # 将新建的事件循环设置为当前线程的默认事件循环
         asyncio.set_event_loop(loop)
+    # 返回可用的事件循环对象
     return loop
 
 

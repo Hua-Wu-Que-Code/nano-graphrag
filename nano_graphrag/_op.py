@@ -36,26 +36,38 @@ def chunking_by_token_size(
     overlap_token_size=128,
     max_token_size=1024,
 ):
+    """
+    按照最大 token 数进行文本分块，支持重叠窗口。
+    :param tokens_list: 每个文档的 token 序列列表（每个元素是一个文档的 token 列表）
+    :param doc_keys: 每个文档的唯一标识（与 tokens_list 顺序对应）
+    :param tiktoken_model: tiktoken 编码器对象，支持 decode_batch；
+    :param overlap_token_size: 相邻分块之间的重叠 token 数
+    :param max_token_size: 每个分块的最大 token 数
+    :return: 分块后的结果列表，每个元素是一个 dict，包含分块内容、长度、顺序、所属文档等信息
+    """
 
     results = []
     for index, tokens in enumerate(tokens_list):
-        chunk_token = []
-        lengths = []
+        chunk_token = []  # 存储当前文档的所有分块的 token 序列
+        lengths = []      # 存储每个分块的实际 token 数
+        # 以 (max_token_size - overlap_token_size) 为步长滑动窗口分块
         for start in range(0, len(tokens), max_token_size - overlap_token_size):
-
+            # 取出当前窗口的 token 作为一个分块
             chunk_token.append(tokens[start : start + max_token_size])
+            # 记录当前分块的 token 数（最后一块可能不足 max_token_size）
             lengths.append(min(max_token_size, len(tokens) - start))
 
-        # here somehow tricky, since the whole chunk tokens is list[list[list[int]]] for corpus(doc(chunk)),so it can't be decode entirely
+        # 批量解码所有分块的 token，得到字符串内容
+        # 注意：chunk_token 是 list[list[list[int]]]，不能整体 decode，只能分文档 decode
         chunk_token = tiktoken_model.decode_batch(chunk_token)
         for i, chunk in enumerate(chunk_token):
-
+            # 组装每个分块的元数据
             results.append(
                 {
-                    "tokens": lengths[i],
-                    "content": chunk.strip(),
-                    "chunk_order_index": i,
-                    "full_doc_id": doc_keys[index],
+                    "tokens": lengths[i],              # 分块的 token 数
+                    "content": chunk.strip(),          # 分块的文本内容
+                    "chunk_order_index": i,            # 当前文档内的分块顺序
+                    "full_doc_id": doc_keys[index],    # 所属文档的唯一 id
                 }
             )
 
@@ -99,23 +111,40 @@ def chunking_by_seperators(
 
 
 def get_chunks(new_docs, chunk_func=chunking_by_token_size, **chunk_func_params):
-    inserting_chunks = {}
+    """
+    对新文档进行分块处理，生成 chunk 字典，供后续实体抽取、向量化和知识图谱构建使用。
 
+    :param new_docs: dict，key 为文档唯一 id，value 为文档内容（通常包含 "content" 字段）
+    :param chunk_func: 分块函数，默认按 token 数滑窗分块（可自定义为句子、段落等粒度）
+    :param chunk_func_params: 传递给分块函数的其它参数（如分块大小、重叠量等）
+    :return: inserting_chunks，dict，key 为 chunk 的唯一 id，value 为 chunk 的详细信息
+    """
+    inserting_chunks = {}  # 用于存储所有分块后的 chunk，key 为 chunk id
+
+    # 将 new_docs 转为列表，方便后续处理
     new_docs_list = list(new_docs.items())
+    # 提取所有文档的内容（字符串）
     docs = [new_doc[1]["content"] for new_doc in new_docs_list]
+    # 提取所有文档的唯一 id
     doc_keys = [new_doc[0] for new_doc in new_docs_list]
 
+    # 1. 用 tiktoken 分词器将文本批量编码为 tokens（token id 列表）
     ENCODER = tiktoken.encoding_for_model("gpt-4o")
     tokens = ENCODER.encode_batch(docs, num_threads=16)
+
+    # 2. 调用分块函数进行分块，得到每个 chunk 的详细信息
     chunks = chunk_func(
         tokens, doc_keys=doc_keys, tiktoken_model=ENCODER, **chunk_func_params
     )
 
+    # 3. 为每个 chunk 生成唯一 id，并组装成字典
     for chunk in chunks:
+        # compute_mdhash_id 用于根据 chunk 内容生成唯一 hash id，前缀为 "chunk-"
         inserting_chunks.update(
             {compute_mdhash_id(chunk["content"], prefix="chunk-"): chunk}
         )
 
+    # 返回所有分块后的 chunk 字典
     return inserting_chunks
 
 

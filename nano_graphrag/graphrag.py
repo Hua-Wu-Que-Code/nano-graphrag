@@ -1,11 +1,11 @@
 import asyncio  # Python 标准库，支持异步编程（如 async/await、事件循环等）
 import os       # Python 标准库，进行文件和目录操作（如创建目录、判断文件是否存在等）
+import tiktoken  # OpenAI 的分词库，用于按 token 分割文本，支持多种 LLM 模型的分词规则
+
 from dataclasses import asdict, dataclass, field  # Python 标准库，简化数据类的定义和实例转字典
 from datetime import datetime  # Python 标准库，处理日期和时间
 from functools import partial  # Python 标准库，生成带部分参数的函数
 from typing import Callable, Dict, List, Optional, Type, Union, cast  # Python 标准库，类型注解和类型转换
-
-import tiktoken  # OpenAI 的分词库，用于按 token 分割文本，支持多种 LLM 模型的分词规则
 
 # 导入 nano-graphrag 内部各类 LLM、Embedding、存储、操作与工具函数
 
@@ -69,6 +69,7 @@ class GraphRAG:
     """
 
     # 工作目录，所有缓存、索引、图谱等文件都存放于此
+    # default_factory 的值是一个可执行的函数
     working_dir: str = field(
         default_factory=lambda: f"./nano_graphrag_cache_{datetime.now().strftime('%Y-%m-%d-%H:%M:%S')}"
     )
@@ -79,7 +80,8 @@ class GraphRAG:
     enable_naive_rag: bool = False
 
     # 文本分块相关参数
-    chunk_func: Callable = chunking_by_token_size  # 分块函数
+    ## Callable 是一个类型注解：用于表示一个可调用的对象，如函数
+    chunk_func: Callable = chunking_by_token_size  # 分块函数,按照 token 进行划分
     chunk_token_size: int = 1200                   # 每块最大 token 数
     chunk_overlap_token_size: int = 100            # 块之间重叠 token 数
     tiktoken_model_name: str = "gpt-4o"            # 用于分词的模型名
@@ -93,17 +95,16 @@ class GraphRAG:
     max_graph_cluster_size: int = 10               # 最大聚类数
     graph_cluster_seed: int = 0xDEADBEEF           # 聚类随机种子
 
-    # 节点嵌入算法参数
-    node_embedding_algorithm: str = "node2vec"
+    node_embedding_algorithm: str = "node2vec"  # 节点嵌入算法名称，当前默认使用 node2vec
     node2vec_params: dict = field(
         default_factory=lambda: {
-            "dimensions": 1536,
-            "num_walks": 10,
-            "walk_length": 40,
-            "num_walks": 10,
-            "window_size": 2,
-            "iterations": 3,
-            "random_seed": 3,
+            "dimensions": 1536,    # 嵌入向量的维度，决定每个节点的特征向量长度
+            "num_walks": 10,       # 每个节点生成的随机游走（walk）次数，用于采样邻居信息
+            "walk_length": 40,     # 每次随机游走的步数，决定采样的路径长度
+            "num_walks": 10,       # （重复定义，建议去掉一处）每个节点的随机游走次数
+            "window_size": 2,      # skip-gram 的窗口大小，影响上下文节点的范围
+            "iterations": 3,       # skip-gram 训练的迭代次数
+            "random_seed": 3,      # 随机种子，保证实验可复现
         }
     )
 
@@ -180,12 +181,16 @@ class GraphRAG:
             os.makedirs(self.working_dir)
 
         # 初始化各类存储实例（KV、向量、图谱等）
+        
+        # 全文档存储（原始文本，key 为 doc id）
         self.full_docs = self.key_string_value_json_storage_cls(
             namespace="full_docs", global_config=asdict(self)
         )
+        # 文本分块存储（每个 chunk，key 为 chunk id）
         self.text_chunks = self.key_string_value_json_storage_cls(
             namespace="text_chunks", global_config=asdict(self)
         )
+        # LLM 响应缓存（可选，提升推理效率，避免重复请求）
         self.llm_response_cache = (
             self.key_string_value_json_storage_cls(
                 namespace="llm_response_cache", global_config=asdict(self)
@@ -193,9 +198,11 @@ class GraphRAG:
             if self.enable_llm_cache
             else None
         )
+        # 社区报告存储（每个社区的分析报告）
         self.community_reports = self.key_string_value_json_storage_cls(
             namespace="community_reports", global_config=asdict(self)
         )
+        # 知识图谱存储（chunk-实体-关系图）
         self.chunk_entity_relation_graph = self.graph_storage_cls(
             namespace="chunk_entity_relation", global_config=asdict(self)
         )
@@ -371,9 +378,33 @@ class GraphRAG:
 
     async def _insert_start(self):
         """
-        插入流程开始前的回调（如索引锁定等），支持多存储后端扩展。
+        _insert_start 就是“插入前的准备/加锁钩子”，保证数据插入时各类存储后端都已准备好，防止并发冲突和数据不一致。
+        在插入新数据（如文档、分块、实体等）到各类存储前，提前对相关存储做“准备工作”，
+        比如加锁、索引准备等，确保数据插入过程的安全性和一致性。
+
+        为什么需要这个函数？
+        在多线程/多进程环境下，可能会有多个线程/进程同时尝试插入数据到同一个存储实例。
+        这可能导致数据不一致、索引错误等问题。
+        通过在插入前进行一些准备工作，可以确保数据插入的安全性和一致性。
+        例如：
+        1. 锁定存储实例，防止其他线程/进程同时插入数据。
+        2. 准备索引，确保索引结构是最新的。
+        3. 清理旧数据，确保存储实例的状态是干净的。
+        4. 其他需要在插入前进行的操作。
+        
+
+        具体做了什么？
+        1. 遍历所有需要在插入前进行处理的存储实例（目前只包含知识图谱存储）。
+        2. 对每个存储实例调用 index_start_callback() 方法。
+        3. index_start_callback() 方法会执行一些准备工作，比如加锁、索引准备等。
+        4. 使用 asyncio.gather() 方法并发执行所有存储实例的 index_start_callback() 方法。
+        5. 等待所有存储实例的 index_start_callback() 方法执行完成。
+        
+        为什么是异步的？
+        存储后端可能是远程数据库、分布式存储等，准备动作可能很耗时，用异步可以提升效率。
         """
         tasks = []
+        # 遍历需要在插入前进行处理的存储实例（目前只包含知识图谱存储）
         for storage_inst in [
             self.chunk_entity_relation_graph,
         ]:
